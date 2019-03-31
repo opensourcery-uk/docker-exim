@@ -1,0 +1,12 @@
+version: '3'
+services:
+  exim:
+    image: 'opensourcery/exim:latest'
+    environment:
+      - MAILNAME=tld.to.accept.email.for
+    volumes:
+        - /path/to/spool:/var/spool/exim4
+        - /path/to/mail:/home
+    ports:
+      - "25:25"
+      - "587:587"

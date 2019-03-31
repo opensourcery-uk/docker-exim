@@ -1,0 +1,19 @@
+MAIN_LOCAL_DOMAINS = @ : localhost : { DOMAINS }
+REMOTE_SMTP_HELO_DATA = { mailname }
+
+MAIN_TLS_ENABLE = 1
+MAIN_TLS_CERTIFICATE = /etc/letsencrypt/live/{ mailname }/fullchain.pem
+MAIN_TLS_PRIVATEKEY = /etc/letsencrypt/live/{ mailname }/privkey.pem
+
+MAILDIR_HOME_CREATE_DIRECTORY=true
+IGNORE_SMTP_LINE_LENGTH_LIMIT=true
+
+LOCAL_DENY_CHECK_RCPT_IP_DNSBLS = zen.spamhaus.org : b.barracudacentral.org
+LOCAL_DENY_CHECK_RCPT_DOMAIN_DNSBLS = dbl.spamhaus.org/$sender_address_domain
+LOCAL_CHECK_RCPT_VERIFY_SENDER = 1
+LOCAL_CHECK_RCPT_SPF = 1
+
+CHECK_DATA_LOCAL_ACL_FILE = /etc/exim4/conf.d/local/acl_exim4-config_check-data-local
+CHECK_DATA_VERIFY_HEADER_SENDER = 1
+CHECK_RCPT_LOCAL_ACL_FILE = /etc/exim4/conf.d/local/acl_exim4-config_check-rcpt-local
+CHECK_RCPT_REVERSE_DNS = 1

@@ -1,0 +1,100 @@
+  # Check against classic DNS "black" lists (DNSBLs) which list
+  # sender IP addresses
+  .ifdef LOCAL_DENY_CHECK_RCPT_IP_DNSBLS
+  deny
+    dnslists = LOCAL_DENY_CHECK_RCPT_IP_DNSBLS
+    add_header = X-Warning: $sender_host_address is listed at $dnslist_domain ($dnslist_value: $dnslist_text)
+    log_message = $sender_host_address is listed at $dnslist_domain ($dnslist_value: $dnslist_text)
+  .endif
+
+  # Check against DNSBLs which list sender domains, with an option to locally
+  # whitelist certain domains that might be blacklisted.
+  #
+  # Note: If you define CHECK_RCPT_DOMAIN_DNSBLS, you must append
+  # "/$sender_address_domain" after each domain.  For example:
+  # CHECK_RCPT_DOMAIN_DNSBLS = rhsbl.foo.org/$sender_address_domain \
+  #                            : rhsbl.bar.org/$sender_address_domain
+  .ifdef LOCAL_DENY_CHECK_RCPT_DOMAIN_DNSBLS
+  deny
+    !senders = ${if exists{CONFDIR/local_domain_dnsbl_whitelist}\
+                    {CONFDIR/local_domain_dnsbl_whitelist}\
+                    {}}
+    dnslists = LOCAL_DENY_CHECK_RCPT_DOMAIN_DNSBLS
+    add_header = X-Warning: $sender_address_domain is listed at $dnslist_domain ($dnslist_value: $dnslist_text)
+    log_message = $sender_address_domain is listed at $dnslist_domain ($dnslist_value: $dnslist_text)
+  .endif
+
+  # Deny unless the sender address can be verified.
+  #
+  # This is disabled by default so that DNSless systems don't break. If
+  # your system can do DNS lookups without delay or cost, you might want
+  # to enable this feature.
+  #
+  # This feature does not work in smarthost and satellite setups as
+  # with these setups all domains pass verification. See spec.txt section
+  # "Access control lists" subsection "Address verification" with the added
+  # information that a smarthost/satellite setup routes all non-local e-mail
+  # to the smarthost.
+  .ifdef LOCAL_CHECK_RCPT_VERIFY_SENDER
+  deny
+    message = Sender verification failed
+    !acl = acl_local_deny_exceptions
+    !verify = sender
+  .endif
+
+  # Use spfquery to perform a pair of SPF checks (for details, see
+  # http://www.openspf.org/)
+  #
+  # This is quite costly in terms of DNS lookups (~6 lookups per mail).  Do not
+  # enable if that's an issue.  Also note that if you enable this, you must
+  # install "spf-tools-perl" which provides the spfquery command.
+  # Missing spf-tools-perl will trigger the "Unexpected error in
+  # SPF check" warning.
+  .ifdef LOCAL_CHECK_RCPT_SPF
+  deny
+    message = [SPF] $sender_host_address is not allowed to send mail from \
+              ${if def:sender_address_domain {$sender_address_domain}{$sender_helo_name}}.  \
+              Please see \
+              http://www.openspf.org/Why?scope=${if def:sender_address_domain \
+              {mfrom}{helo}};identity=${if def:sender_address_domain \
+              {$sender_address}{$sender_helo_name}};ip=$sender_host_address
+    log_message = SPF check failed.
+    !acl = acl_local_deny_exceptions
+    condition = ${run{/usr/bin/spfquery.mail-spf-perl --ip \
+                   ${quote:$sender_host_address} --identity \
+                   ${if def:sender_address_domain \
+                       {--scope mfrom  --identity ${quote:$sender_address}}\
+                       {--scope helo --identity ${quote:$sender_helo_name}}}}\
+                   {no}{${if eq {$runrc}{1}{yes}{no}}}}
+
+  warn
+    log_message = SPF check softfail.
+    !acl = acl_local_deny_exceptions
+    condition = ${run{/usr/bin/spfquery.mail-spf-perl --ip \
+                   ${quote:$sender_host_address} --identity \
+                   ${if def:sender_address_domain \
+                       {--scope mfrom  --identity ${quote:$sender_address}}\
+                       {--scope helo --identity ${quote:$sender_helo_name}}}}\
+                   {no}{${if eq {$runrc}{2}{yes}{no}}}}
+    add_header = X-Local-Spam: SPF Fail.
+
+  defer
+    message = Temporary DNS error while checking SPF record.  Try again later.
+    !acl = acl_local_deny_exceptions
+    condition = ${if eq {$runrc}{5}{yes}{no}}
+
+  warn
+    condition = ${if <={$runrc}{6}{yes}{no}}
+    add_header = Received-SPF: ${if eq {$runrc}{0}{pass}\
+                                 {${if eq {$runrc}{3}{neutral}\
+                                  {${if eq {$runrc}{4}{permerror}\
+                                   {${if eq {$runrc}{6}{none}{error}}}}}}}}\
+                                } client-ip=$sender_host_address; \
+                                ${if def:sender_address_domain \
+                                  {envelope-from=${sender_address}; }{}}\
+                                helo=$sender_helo_name
+
+  warn
+    log_message = Unexpected error in SPF check.
+    condition = ${if >{$runrc}{6}{yes}{no}}
+  .endif

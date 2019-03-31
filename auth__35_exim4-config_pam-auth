@@ -1,0 +1,15 @@
+plain_server:
+ driver = plaintext
+ public_name = PLAIN
+ server_condition = "${if pam{$auth2:$auth3}{yes}{no}}"
+ server_set_id = $auth2
+ server_prompts = :
+ server_advertise_condition = ${if eq{$tls_cipher}{}{}{*}}
+
+login_server:
+ driver = plaintext
+ public_name = LOGIN
+ server_condition = "${if pam{$auth1:$auth2}{yes}{no}}"
+ server_set_id = $auth1
+ server_prompts = <| Username: | Password:
+ server_advertise_condition = ${if eq{$tls_cipher}{}{}{*}}
